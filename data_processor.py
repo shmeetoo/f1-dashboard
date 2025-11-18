@@ -148,6 +148,11 @@ def process_results_data(df: pd.DataFrame, session_type: str) -> pd.DataFrame:
         return df
 
     df = df.copy()
+    
+    df["gap_to_leader"] = df["gap_to_leader"].astype("object")
+    df["position"] = df["position"].astype("object")
+    df["duration"] = df["duration"].astype("object")
+
     mask_leader = df["gap_to_leader"] == 0
 
     if session_type in ("Race", "Sprint"):
