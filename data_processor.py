@@ -18,11 +18,15 @@ def process_laps_data(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     
-    df = df[df["duration_sector_1"].notna()]
-    df = df[df["duration_sector_2"].notna()]
-    df = df[df["duration_sector_3"].notna()]
+    df = df.dropna(subset=[
+        "duration_sector_1",
+        "duration_sector_2",
+        "duration_sector_3",
+        "lap_duration"
+    ]).copy()
 
-    df = df[df["lap_duration"].notna()]
+    df["driver_number"] = df["driver_number"].astype(str)
+    df["lap_number"] = pd.to_numeric(df["lap_number"], errors="coerce")
     df = df.sort_values(["driver_number", "lap_number"])
 
     return df
@@ -44,9 +48,11 @@ def process_stints_data(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     
+    df = df.copy()
     df = df.sort_values(["driver_number", "stint_number"])
     df["compound"] = df["compound"].fillna("Unknown")
     df["lap_count"] = df["lap_end"] - df["lap_start"] + 1
+    df["driver_number"] = df["driver_number"].astype(str)
 
     return df
 
@@ -66,6 +72,7 @@ def process_pit_stops_data(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
 
+    df = df.copy()
     df = df[df["pit_duration"].notna()]
     df = df.sort_values(["driver_number", "lap_number"])
 
@@ -88,11 +95,13 @@ def process_driver_position(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     
+    df = df.copy()
     df = df.sort_values(["position", "number_of_laps"], ascending=[True, False])
-    max_position = int(df["position"].max() + 1)
-    n_missing = int(df["position"].isna().sum())
 
-    df.loc[df["position"].isna(), "position"] = range(max_position, max_position + n_missing)
+    max_position = int(df["position"].max(skipna=True) + 1)
+    missing = df["position"].isna().sum()
+
+    df.loc[df["position"].isna(), "position"] = range(max_position, max_position + missing)
 
     return df
 
@@ -110,21 +119,14 @@ def build_driver_colormap(df: pd.DataFrame) -> dict:
     if df.empty:
         return {}
     
+    df = df.copy()
+
     # Format team colors to always start with '#' for valid CSS color input
     df["team_colour"] = df["team_colour"].apply(
         lambda x: f"#{x}" if not str(x).startswith("#") else x
     )
 
-    df["driver_number"] = df["driver_number"].astype(str)
-    
-    color_map = {
-        str(row["name_acronym"]): row["team_colour"]
-        for _, row in df.iterrows()
-        if pd.notna(row["team_colour"])
-    }
-
-    return color_map
-
+    return dict(zip(df["name_acronym"], df["team_colour"]))
 
 def process_results_data(df: pd.DataFrame, session_type: str) -> pd.DataFrame:
     """
@@ -145,14 +147,12 @@ def process_results_data(df: pd.DataFrame, session_type: str) -> pd.DataFrame:
     if df.empty:
         return df
 
+    df = df.copy()
     mask_leader = df["gap_to_leader"] == 0
 
     if session_type in ("Race", "Sprint"):
-
-        df["position"] = df["position"].astype(object)
         for flag in ["dnf", "dns", "dsq"]:
-            df.loc[df[flag], "gap_to_leader"] = flag.upper()
-            df.loc[df[flag], "position"] = flag.upper()
+            df.loc[df[flag], ["gap_to_leader", "position"]] = flag.upper()
 
         df["position"] = df["position"].apply(
             lambda x: int(x) if isinstance(x, (int, float)) and not pd.isna(x) else x
@@ -161,8 +161,8 @@ def process_results_data(df: pd.DataFrame, session_type: str) -> pd.DataFrame:
         df.loc[mask_leader, "duration"] = df.loc[mask_leader, "duration"].apply(format_race_time)
         df.loc[mask_leader, "gap_to_leader"] = df.loc[mask_leader, "duration"]
 
-        mask_numeric = df["gap_to_leader"].apply(lambda x: isinstance(x, (int, float)) and not pd.isna(x))
-        df.loc[mask_numeric & ~mask_leader, "gap_to_leader"] = df.loc[
+        mask_numeric = pd.to_numeric(df["gap_to_leader"], errors="coerce").notna()
+        df.loc[mask_numeric & ~mask_leader, "gap_to_leader"] = df.loc[  
             mask_numeric & ~mask_leader, "gap_to_leader"
         ].apply(lambda x: f"+{x:.3f}s")
 
@@ -170,13 +170,11 @@ def process_results_data(df: pd.DataFrame, session_type: str) -> pd.DataFrame:
         pass
 
     else:
-        # df["position"] = df["position"].astype(int)
-
         df.loc[mask_leader, "duration"] = df.loc[mask_leader, "duration"].apply(format_lap_time)
         df.loc[mask_leader, "gap_to_leader"] = df.loc[mask_leader, "duration"]
 
-        mask_numeric = df["gap_to_leader"].apply(lambda x: isinstance(x, (int, float)) and not pd.isna(x))
-        df.loc[mask_numeric & ~mask_leader, "gap_to_leader"] = df.loc[
+        mask_numeric = pd.to_numeric(df["gap_to_leader"], errors="coerce").notna()
+        df.loc[mask_numeric & ~mask_leader, "gap_to_leader"] = df.loc[  
             mask_numeric & ~mask_leader, "gap_to_leader"
         ].apply(lambda x: f"+{x:.3f}s")
 
@@ -184,9 +182,7 @@ def process_results_data(df: pd.DataFrame, session_type: str) -> pd.DataFrame:
 
 
 
-
 def format_lap_time(seconds):
-
     minutes = int(seconds // 60)
     sec = int(seconds % 60)
     millis = int((seconds - int(seconds)) * 1000)
@@ -195,16 +191,14 @@ def format_lap_time(seconds):
 
 
 def format_race_time(seconds):
-    
     hours = int(seconds // 3600)
-    minutes = int((seconds // 60) % 60)
+    minutes = int((seconds % 3600) // 60)
     sec = int(seconds % 60)
     millis = int((seconds - int(seconds)) * 1000)
 
     return f"{hours}:{minutes:02}:{sec:02}.{millis:03}"
 
 def format_seconds_to_mmss(seconds):
-
     minutes = int(seconds // 60)
     secs = int(seconds % 60)
 

@@ -14,17 +14,16 @@ def plot_lap_times(lap_time_df: pd.DataFrame, color_map: dict):
         st.warning("No lap data available for this session.")
         return None
     
-    lap_time_df["formatted_lap_time"] = lap_time_df["lap_duration"].apply(format_lap_time)
-    lap_time_df["is_pit_out_lap"] = lap_time_df["is_pit_out_lap"].fillna(False).astype(bool)
+    df = lap_time_df.copy()
+    df["formatted_lap_time"] = df["lap_duration"].apply(format_lap_time)
+    df["is_pit_out_lap"] = df["is_pit_out_lap"].fillna(False).astype(bool)
     
     fig = go.Figure()
 
+    for driver in df["name_acronym"].unique():
+        driver_data = df[df["name_acronym"] == driver].sort_values("lap_number")
 
-    for driver in lap_time_df["name_acronym"].unique():
-        driver_data = lap_time_df[lap_time_df["name_acronym"] == driver].copy()
-        driver_data = driver_data.sort_values(["lap_number"])
-
-        hover_texts = [
+        hover = [
             f"<b>{driver}: {row['driver_number']}</b><br>"
             f"Lap: {row['lap_number']}<br>"
             f"Lap Time: {row['formatted_lap_time']}"
@@ -40,7 +39,7 @@ def plot_lap_times(lap_time_df: pd.DataFrame, color_map: dict):
             marker=dict(color=color_map.get(driver, "gray")),
             line=dict(color=color_map.get(driver, "gray")),
             hoverinfo="text",
-            hovertext=hover_texts,
+            hovertext=hover,
             legendrank=driver_data["position"].values[0]
         ))
 
