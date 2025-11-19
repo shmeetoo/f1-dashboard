@@ -27,7 +27,7 @@ and session.
 
 Showcase of the dashboard in action:
 
-![F1 Dashboard Demo](demo.gif)
+![F1 Dashboard Demo](assets/demo.gif)
 
 ------------------------------------------------------------------------
 
